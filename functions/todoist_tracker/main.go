@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io/ioutil"
 	"log"
 	"net/http"
@@ -10,7 +11,20 @@ import (
 
 	"github.com/aws/aws-lambda-go/events"
 	"github.com/aws/aws-lambda-go/lambda"
+	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws/session"
+	invoke "github.com/aws/aws-sdk-go/service/lambda"
 )
+
+type Payload struct {
+	// You can also include more objects in the structure like below,
+	// but for my purposes body was all that was required
+	// Method string `json:"httpMethod"`
+	Body string `json:"body"`
+}
+
+var sess = session.Must(session.NewSession())
+var svc = invoke.New(sess)
 
 type LambdaResponse events.APIGatewayProxyResponse
 
@@ -50,6 +64,31 @@ func Handler(ctx context.Context, event events.APIGatewayProxyRequest) (LambdaRe
 	if err != nil {
 		log.Fatalln("Couldn't marshal trackeable tasks", err.Error())
 	}
+	for _, task := range trackeableTasks {
+		currentTaskJson := map[string]any{
+			"name": task.Content,
+			"date": task.Due.Date,
+		}
+		body, err := json.Marshal(currentTaskJson)
+		if err != nil {
+			log.Fatalln("Error parsing payload", err.Error())
+		}
+		p := Payload{
+			Body: string(body),
+		}
+		payload, err := json.Marshal(p)
+		input := &invoke.InvokeInput{
+			FunctionName:   aws.String("addCompletedTask"),
+			InvocationType: aws.String("Event"),
+			Payload:        payload,
+		}
+		_, err = svc.Invoke(input)
+		if err != nil {
+			fmt.Println("error Invoking another function")
+			fmt.Println(err.Error())
+		}
+	}
+
 	lambdaResp := LambdaResponse{
 		StatusCode:      200,
 		IsBase64Encoded: false,
@@ -58,6 +97,7 @@ func Handler(ctx context.Context, event events.APIGatewayProxyRequest) (LambdaRe
 		},
 		Body: string(body),
 	}
+	// Call the other lambda passing only the relevant fields: name, date-1
 	return lambdaResp, nil
 }
 func main() {

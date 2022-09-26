@@ -1,5 +1,6 @@
 {
   "devDependencies": {
+    "serverless-localstack": "^1.0.0",
     "serverless-ssm-fetch": "^2.0.0"
   }
 }

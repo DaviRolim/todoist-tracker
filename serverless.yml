@@ -23,10 +23,30 @@ frameworkVersion: '3'
 provider:
   name: aws
   runtime: go1.x
-
+  environment:
+    TABLE_NAME: todoist_tracker
 # you can overwrite defaults here
 #  stage: dev
 #  region: us-east-1
+  iam:
+    role:
+      statements:
+        - Effect: Allow
+          Action:
+            - dynamodb:DescribeTable
+            - dynamodb:Query
+            - dynamodb:Scan
+            - dynamodb:GetItem
+            - dynamodb:PutItem
+            - dynamodb:UpdateItem
+            - dynamodb:DeleteItem
+          Resource: "arn:aws:dynamodb:*:*:*"
+        - Effect: "Allow"
+          Action:
+            - "lambda:InvokeFunction"
+            - "lambda:InvokeAsync"
+          Resource: "*"
+
 
 # you can add statements to the Lambda function's IAM Role here
 #  iam:
@@ -47,8 +67,7 @@ provider:
 #                - "/*"
 
 # you can define service wide environment variables here
-environment:
-  TODOIST_AUTH: ${ssm:/todoist-auth}
+
 
 package:
   patterns:
@@ -62,16 +81,16 @@ functions:
       - TODOIST_AUTH
     url:
       cors: true
+    name: todoistTrackTasks
     # events:
     #   - httpApi:
     #       path: /todoist
     #       method: get
-  # world:
-  #   handler: bin/world
-  #   events:
-  #     - httpApi:
-  #         path: /world
-  #         method: get
+  addCompletedTask:
+    handler: bin/post
+    url:
+      cors: true
+    name: addCompletedTask
 #    The following are a few example events you can configure
 #    NOTE: Please make sure to change your handler code to work with those events
 #    Check the event documentation for details
@@ -124,6 +143,26 @@ functions:
 #     NewOutput:
 #       Description: "Description for the output"
 #       Value: "Some output value"
+resources:
+  Resources:
+    GoCrudDynamoDbTable:
+      Type: 'AWS::DynamoDB::Table'
+      DeletionPolicy: Retain
+      Properties:
+        AttributeDefinitions:
+          - AttributeName: date
+            AttributeType: S
+          - AttributeName: name
+            AttributeType: S
+        KeySchema:
+          - AttributeName: name
+            KeyType: HASH
+          - AttributeName: date
+            KeyType: RANGE
+        ProvisionedThroughput:
+          ReadCapacityUnits: 1
+          WriteCapacityUnits: 1
+        TableName: 'todoist_tracker'
 custom:
   serverlessSsmFetch:
     TODOIST_AUTH: todoist-auth
