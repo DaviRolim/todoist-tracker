@@ -15,9 +15,10 @@ import (
 )
 
 type Task struct {
-	Name     string       `json:"name"`
-	Date     string       `json:"date"`
-	Metadata TaskMetadata `json:"metadata;omitempty"`
+	Name             string `json:"name"`
+	Date             string `json:"date"`
+	MeasurementType  string `json:"measurementType"`
+	MeasurementValue int    `json:"measurementValue"`
 }
 type TaskMetadata struct {
 }

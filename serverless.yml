@@ -77,6 +77,8 @@ package:
 functions:
   todoist:
     handler: bin/todoist
+    events:
+      - schedule: cron(55 23 * * ? *)
     ssmToEnvironment:
       - TODOIST_AUTH
     url:

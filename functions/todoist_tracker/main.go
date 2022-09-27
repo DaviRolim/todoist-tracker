@@ -8,6 +8,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"time"
 
 	"github.com/aws/aws-lambda-go/events"
 	"github.com/aws/aws-lambda-go/lambda"
@@ -65,9 +66,28 @@ func Handler(ctx context.Context, event events.APIGatewayProxyRequest) (LambdaRe
 		log.Fatalln("Couldn't marshal trackeable tasks", err.Error())
 	}
 	for _, task := range trackeableTasks {
-		currentTaskJson := map[string]any{
-			"name": task.Content,
-			"date": task.Due.Date,
+		if !task.wasDoneToday() {
+			continue
+		}
+
+		const layout = "2006-01-02"
+		taksDueTime, err := time.Parse(layout, task.Due.Date)
+		// if the task was done today, the next DueDate will be tomorrow, so I'll decrease one day from due date to get the "done" date.
+		// time.Now().Format("2006-01-02") should also work.
+		//today := taksDueTime.Add(time.Hour * 24 * -1)
+		today := taksDueTime.AddDate(0, 0, -1)
+		var currentTaskJson = make(map[string]any)
+		currentTaskJson["name"] = task.Content
+		currentTaskJson["date"] = today.Format("2006-01-02")
+		if task.Description != "" {
+			var description map[string]any
+			err := json.Unmarshal([]byte(task.Description), &description)
+			if err != nil {
+				log.Fatalln(err.Error())
+			}
+			log.Println(description)
+			currentTaskJson["measurementType"] = description["measurementType"]
+			currentTaskJson["measurementValue"] = description["measurementValue"]
 		}
 		body, err := json.Marshal(currentTaskJson)
 		if err != nil {
