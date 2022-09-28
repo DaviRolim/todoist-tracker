@@ -24,17 +24,42 @@ type Payload struct {
 	Body string `json:"body"`
 }
 
+const TODOIST_URL = "https://api.todoist.com/rest/v2/tasks"
+
 var sess = session.Must(session.NewSession())
 var svc = invoke.New(sess)
 
 type LambdaResponse events.APIGatewayProxyResponse
 
 func Handler(ctx context.Context, event events.APIGatewayProxyRequest) (LambdaResponse, error) {
-	eventJson, _ := json.MarshalIndent(event, "", "  ")
-	log.Printf("EVENT: %s", eventJson)
-	url := "https://api.todoist.com/rest/v2/tasks"
+	log.Printf("EVENT: %v", event)
+	// Call the todoist public API to get my tasks
+	tasks := getTasksFromTodoist()
+
+	trackeableTasks := filterTrackeableTasks(tasks)
+
+	body, err := json.Marshal(trackeableTasks)
+	if err != nil {
+		log.Fatalln("Couldn't marshal trackeable tasks", err.Error())
+	}
+	// Send trackeable tasks to a lambda that has connection to a DB (dynamo in this case) to save the tasks
+	sendTasksToLambdaToPersist(trackeableTasks)
+
+	// Send a response with all trackeable tasks
+	lambdaResp := LambdaResponse{
+		StatusCode:      200,
+		IsBase64Encoded: false,
+		Headers: map[string]string{
+			"Content-Type": "application/json",
+		},
+		Body: string(body),
+	}
+	return lambdaResp, nil
+}
+
+func getTasksFromTodoist() []TodoistTask {
 	client := &http.Client{}
-	req, _ := http.NewRequest("GET", url, nil)
+	req, _ := http.NewRequest("GET", TODOIST_URL, nil)
 	req.Header.Set("Authorization", os.Getenv("TODOIST_AUTH"))
 
 	todoistResp, _ := client.Do(req)
@@ -50,76 +75,75 @@ func Handler(ctx context.Context, event events.APIGatewayProxyRequest) (LambdaRe
 		log.Fatalln("Couldn't Unmarshal body", err.Error())
 	}
 
-	trackeableTasks := filterTrackeableTasks(tasks)
-	// for _, task := range trackeableTasks {
-	// 	log.Println(task.Content, task.wasDoneToday())
-	// }
+	return tasks
+}
 
-	// TODO create the entrypoint function (the lambda handler) that will check at the end of the day
-	//  if the task "wasDoneToday" update the streaks table, and log the entry on the taskhistory table.
-	// on the streal table, save last streak, last streak start, last streak end. Because sometimes I forget about
-	// checking todoist at the end of the day and then I update the next day and I shouldn't lose the streak in these cases.
-	// As said in the beginning of this doc, the ideia is to create a lambda function that will run everyday at 23:55
-	// and update the tables
-	body, err := json.Marshal(trackeableTasks)
-	if err != nil {
-		log.Fatalln("Couldn't marshal trackeable tasks", err.Error())
-	}
+func main() {
+	lambda.Start(Handler)
+}
+func sendTasksToLambdaToPersist(trackeableTasks []TodoistTask) {
 	for _, task := range trackeableTasks {
 		if !task.wasDoneToday() {
 			continue
 		}
-
-		const layout = "2006-01-02"
-		taksDueTime, err := time.Parse(layout, task.Due.Date)
-		// if the task was done today, the next DueDate will be tomorrow, so I'll decrease one day from due date to get the "done" date.
-		// time.Now().Format("2006-01-02") should also work.
-		//today := taksDueTime.Add(time.Hour * 24 * -1)
-		today := taksDueTime.AddDate(0, 0, -1)
-		var currentTaskJson = make(map[string]any)
-		currentTaskJson["name"] = task.Content
-		currentTaskJson["date"] = today.Format("2006-01-02")
-		if task.Description != "" {
-			var description map[string]any
-			err := json.Unmarshal([]byte(task.Description), &description)
-			if err != nil {
-				log.Fatalln(err.Error())
-			}
-			log.Println(description)
-			currentTaskJson["measurementType"] = description["measurementType"]
-			currentTaskJson["measurementValue"] = description["measurementValue"]
-		}
-		body, err := json.Marshal(currentTaskJson)
-		if err != nil {
-			log.Fatalln("Error parsing payload", err.Error())
-		}
-		p := Payload{
-			Body: string(body),
-		}
-		payload, err := json.Marshal(p)
+		payload := buildPayloadFromTask(task)
 		input := &invoke.InvokeInput{
 			FunctionName:   aws.String("addCompletedTask"),
 			InvocationType: aws.String("Event"),
 			Payload:        payload,
 		}
-		_, err = svc.Invoke(input)
+		_, err := svc.Invoke(input)
 		if err != nil {
 			fmt.Println("error Invoking another function")
 			fmt.Println(err.Error())
 		}
 	}
+}
 
-	lambdaResp := LambdaResponse{
-		StatusCode:      200,
-		IsBase64Encoded: false,
-		Headers: map[string]string{
-			"Content-Type": "application/json",
-		},
+func buildPayloadFromTask(task TodoistTask) []byte {
+	const layout = "2006-01-02"
+	taksDueTime, err := time.Parse(layout, task.Due.Date)
+	// if the task was done today, the next DueDate will be tomorrow, so I'll decrease one day from due date to get the "done" date.
+	// time.Now().Format("2006-01-02") should also work.
+	//today := taksDueTime.Add(time.Hour * 24 * -1)
+	today := taksDueTime.AddDate(0, 0, -1)
+	var taskJson = make(map[string]any)
+	taskJson["name"] = task.Content
+	taskJson["date"] = today.Format("2006-01-02")
+	if task.Description != "" {
+		addMeasurementsToTaskJsonFromTaskDescription(taskJson, task)
+	}
+	body, err := json.Marshal(taskJson)
+	if err != nil {
+		log.Fatalln("Error parsing body", err.Error())
+	}
+	p := Payload{
 		Body: string(body),
 	}
-	// Call the other lambda passing only the relevant fields: name, date-1
-	return lambdaResp, nil
+	payload, err := json.Marshal(p)
+	if err != nil {
+		log.Fatalln("Error parsing payload", err.Error())
+	}
+	return payload
 }
-func main() {
-	lambda.Start(Handler)
+
+func addMeasurementsToTaskJsonFromTaskDescription(taskJson map[string]any, task TodoistTask) {
+	var description map[string]any
+	err := json.Unmarshal([]byte(task.Description), &description)
+	if err != nil {
+		log.Fatalln(err.Error())
+	}
+	log.Println(description)
+	taskJson["measurementType"] = description["measurementType"]
+	taskJson["measurementValue"] = description["measurementValue"]
+}
+
+func filterTrackeableTasks(tasks []TodoistTask) []TodoistTask {
+	var result []TodoistTask
+	for _, task := range tasks {
+		if task.isTrackeable() {
+			result = append(result, task)
+		}
+	}
+	return result
 }

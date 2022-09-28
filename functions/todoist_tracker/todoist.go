@@ -51,16 +51,6 @@ func (t *TodoistTask) isRecurring() bool {
 	return t.Due.IsRecurring
 }
 
-func filterTrackeableTasks(tasks []TodoistTask) []TodoistTask {
-	var result []TodoistTask
-	for _, task := range tasks {
-		if task.isTrackeable() {
-			result = append(result, task)
-		}
-	}
-	return result
-}
-
 func (t *TodoistTask) wasDoneToday() bool {
 	//the value below represesents YYYY-MM-DD according to this https://pkg.go.dev/time#pkg-constants
 	const layout = "2006-01-02"
