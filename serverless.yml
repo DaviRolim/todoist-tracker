@@ -93,6 +93,18 @@ functions:
     url:
       cors: true
     name: addCompletedTask
+
+  getCompletedTask:
+    handler: bin/getAll
+    url:
+      cors: true
+    name: getAllTasks
+
+  getCompletedTaskByName:
+    handler: bin/getAllByName
+    url:
+      cors: true
+    name: getAllTasksByName
 #    The following are a few example events you can configure
 #    NOTE: Please make sure to change your handler code to work with those events
 #    Check the event documentation for details
@@ -130,7 +142,7 @@ functions:
 #            host: example.com
 #            path: /hello
 
-#    Define function environment variables here
+# stringItem#    Define function environment variables here
 #    environment:
 #      variable2: value2
 
