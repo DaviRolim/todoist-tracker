@@ -22,23 +22,6 @@ func parseSlug(orig string) (retval string) {
 }
 
 func Handler(request events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
-	// Make the call to the DAO with params found in the path
-	// fmt.Println("Path vars: ", request.PathParameters["year"], " ", parseSlug(request.PathParameters["title"]))
-	// item, err := GetByYearTitle(request.PathParameters["year"], parseSlug(request.PathParameters["title"]))
-	// if err != nil {
-	// 	panic(fmt.Sprintf("Failed to find Item, %v", err))
-	// }
-
-	// // Make sure the Item isn't empty
-	// if item.Year <= 0 {
-	// 	fmt.Println("Could not find movie")
-	// 	return events.APIGatewayProxyResponse{Body: request.Body, StatusCode: 500}, nil
-	// }
-
-	// // Log and return result
-	// jsonItem, _ := json.Marshal(item)
-	// stringItem := string(jsonItem) + "\n"
-	// fmt.Println("Found item: ", stringItem)
 
 	fmt.Println("Path vars: ", request.QueryStringParameters["name"])
 	allTasks := GetAllByName(request.QueryStringParameters["name"])

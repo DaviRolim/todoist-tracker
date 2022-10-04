@@ -274,6 +274,8 @@ func GetAllByName(name string) []Task {
 	sess := session.Must(session.NewSession())
 	svc := dynamodb.New(sess)
 
+	// Query Example for the official git repository
+	// https://github.com/aws/aws-sdk-go/blob/main/service/dynamodb/examples_test.go
 	nameField := "name"
 	input := &dynamodb.QueryInput{
 		ExpressionAttributeNames: map[string]*string{
